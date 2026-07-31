@@ -70,6 +70,10 @@ chatgpt.com **зсередини власної залогіненої вкла�
 - **Claude Code** з розширенням **Claude in Chrome**
 - **Python 3**
 - Chrome із залогіненою вкладкою `chatgpt.com`
+- Дозвіл **Multiple downloads** для `chatgpt.com` — інакше Chrome заблокує
+  друге ж програмне завантаження. Увімкнути: вставте в адресний рядок Chrome
+  `chrome://settings/content/automaticDownloads` → «Додати» → `chatgpt.com`
+  (Claude нагадає про це на старті, робиться один раз)
 - Вільне місце на диску (залежить від обсягу вкладень; орієнтир — кілька ГБ)
 
 ## Як почати — 3 кроки
