@@ -25,7 +25,10 @@
    deferred and the run moves on. NEVER lower the gap mid-run.
    Progress is committed to localStorage ONLY after the NDJSON file has been
    handed to the browser for download (flush every 25 conversations).
-   Keep the tab in the FOREGROUND: Chrome throttles background timers.
+   Background-tab throttling: Chrome slows setTimeout in tabs that stay in
+   the background for a while; the pacing sleep here runs through a Web
+   Worker (exempt from throttling), so the runner is safe in a background
+   tab. Keeping it visible is still nice, not required.
    Soft stop: __kitStop().  Poll progress: window.__kitSt  */
 (() => {
   if (window.__kitRun) return 'ALREADY_RUNNING';
@@ -57,7 +60,15 @@
   window.__kitRun = true;
   window.__kitStop = () => { st.stopReq = true; };
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  /* Worker-based sleep: background tabs throttle setTimeout (field runs saw
+     pace drop from seconds to minutes per item); Web Workers are exempt.
+     Short AbortController kill-timers stay on setTimeout - they do not pace
+     the loop. */
+  const wsrc = 'onmessage=e=>{const p=e.data;setTimeout(()=>postMessage(p[0]),p[1])}';
+  const wrk = new Worker(URL.createObjectURL(new Blob([wsrc])));
+  const wcb = {}; let wseq = 1;
+  wrk.onmessage = e => { const cb = wcb[e.data]; delete wcb[e.data]; if (cb) cb(); };
+  const sleep = ms => new Promise(r => { const id = 'w' + (wseq++); wcb[id] = r; wrk.postMessage([id, ms]); });
   let tok = null;
   const getTok = async () => {
     tok = (await fetch('/api/auth/session').then(r => r.json())).accessToken;

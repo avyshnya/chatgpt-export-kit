@@ -15,7 +15,9 @@
    ASCII only. Sequential, base gap 1000 ms. On 429: raise gap FOREVER
    (+1000 ms), back off (attempt+1)*5000 ms, max 3 attempts, then record and
    move on. Resume-safe: progress in localStorage key kit_liv_done. Saves ONE
-   report json to Downloads: files-liveness.json. Keep the tab foregrounded.
+   report json to Downloads: files-liveness.json. Pacing sleep runs through
+   a Web Worker, so background-tab timer throttling does not slow the run
+   (keeping the tab visible is still nice, not required).
    Poll progress via window.__livSt.  */
 (() => {
   if (window.__livRun) return 'ALREADY_RUNNING';
@@ -45,7 +47,15 @@
     prior: IDS.length - todo.length,
     ok: 0, dead: 0, other: 0, r429: 0, gap: GAP, state: 'init', last: ''
   };
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  /* Worker-based sleep: background tabs throttle setTimeout (field runs saw
+     pace drop from seconds to minutes per item); Web Workers are exempt.
+     Short AbortController kill-timers stay on setTimeout - they do not pace
+     the loop. */
+  const wsrc = 'onmessage=e=>{const p=e.data;setTimeout(()=>postMessage(p[0]),p[1])}';
+  const wrk = new Worker(URL.createObjectURL(new Blob([wsrc])));
+  const wcb = {}; let wseq = 1;
+  wrk.onmessage = e => { const cb = wcb[e.data]; delete wcb[e.data]; if (cb) cb(); };
+  const sleep = ms => new Promise(r => { const id = 'w' + (wseq++); wcb[id] = r; wrk.postMessage([id, ms]); });
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(done)); } catch (e) { st.last = 'ls-save-fail'; } };
   const hdr = tok => {
     const h = { Authorization: 'Bearer ' + tok };

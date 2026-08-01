@@ -14,13 +14,21 @@
    owner - never use it). A JSON body with download_url is followed once.
    A 200 with no bytes is recorded as dead (the download route can lie).
 
-   Each file is saved to ~/Downloads as '<fid>__<name>' - the fid prefix makes
-   names unique, so Chrome never appends ' (1)'. Verify content, not filename.
+   Each file is saved to ~/Downloads as 'arcfile__<fid>' - NO human name, NO
+   extension. The fid makes the name unique (Chrome never appends ' (1)'),
+   and skipping the human name sidesteps Chrome filename mangling. NOTE:
+   Chrome appends '.txt' to extensionless blob downloads - so when unpacking,
+   ALWAYS extract the fid with the regex file[-_][A-Za-z0-9]+ (never by
+   slicing the name or assuming no extension). Real filenames are restored
+   at layout time from the liveness census / manifest; the 'name' field in
+   __dlList is informational only.
    ASCII only. Sequential, base gap 1500 ms. On 429: raise gap FOREVER
    (+1500 ms), back off (attempt+1)*5000 ms, max 3 attempts, then skip.
    Resume-safe: progress in localStorage key kit_dl_done. Final report saved
    as kit-files-report.json (sha256 per file for disk-side verification).
-   Keep the tab foregrounded. Poll: window.__dlSt. Soft stop: __dlStop().  */
+   Pacing sleep runs through a Web Worker, so background-tab timer throttling
+   does not slow the run (keeping the tab visible is nice, not required).
+   Poll: window.__dlSt. Soft stop: __dlStop().  */
 (() => {
   if (window.__dlRun) return 'ALREADY_RUNNING';
   if (location.host.indexOf('chatgpt.com') < 0) return 'WRONG_HOST';
@@ -50,14 +58,21 @@
     ok: 0, dead: 0, other: 0, r429: 0, bytes: 0, gap: GAP, state: 'init', last: ''
   };
   window.__dlStop = () => { st.stopReq = true; };
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  /* Worker-based sleep: background tabs throttle setTimeout (field runs saw
+     pace drop from seconds to minutes per item); Web Workers are exempt.
+     Short AbortController kill-timers stay on setTimeout - they do not pace
+     the loop. */
+  const wsrc = 'onmessage=e=>{const p=e.data;setTimeout(()=>postMessage(p[0]),p[1])}';
+  const wrk = new Worker(URL.createObjectURL(new Blob([wsrc])));
+  const wcb = {}; let wseq = 1;
+  wrk.onmessage = e => { const cb = wcb[e.data]; delete wcb[e.data]; if (cb) cb(); };
+  const sleep = ms => new Promise(r => { const id = 'w' + (wseq++); wcb[id] = r; wrk.postMessage([id, ms]); });
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(done)); } catch (e) { st.last = 'ls-save-fail'; } };
   const hdr = tok => {
     const h = { Authorization: 'Bearer ' + tok };
     if (ACC) h['ChatGPT-Account-ID'] = ACC;
     return h;
   };
-  const safeName = s => String(s || 'file').replace(/[\/\\:*?"<>|]/g, '-').slice(0, 120);
   const saveBlob = (name, buf, mime) => {
     const u = URL.createObjectURL(new Blob([buf], { type: mime || 'application/octet-stream' }));
     const a = Object.assign(document.createElement('a'), { href: u, download: name });
@@ -123,7 +138,7 @@
       if (res.buf && res.buf.byteLength) {
         rec.ok = 1; rec.bytes = res.buf.byteLength;
         rec.sha256 = await sha256buf(res.buf);
-        rec.saved = f.fid + '__' + safeName(f.name);
+        rec.saved = 'arcfile__' + f.fid;
         saveBlob(rec.saved, res.buf, res.ct);
         st.ok++; st.bytes += rec.bytes;
       } else if (res.s === 404 || res.empty) {
