@@ -5,7 +5,11 @@
 
   python3 tools/reorg.py "<КОРІНЬ ГІЛКИ>" [<meta.json>] [<префікс ndjson>]
 
-  КОРІНЬ ГІЛКИ     напр. "1. Робоча — <workspace>" або "2. Особиста"
+  КОРІНЬ ГІЛКИ     Нова схема «парасолька + простір»: запускай ІЗ теки простору
+                   (`<парасолька>/<простір>/`) і передавай "" (порожній рядок) —
+                   тека простору вже і є корінь, `projects/`, `no-project/`,
+                   `_source/` лежать прямо тут. (Стара плоска схема: напр.
+                   "1. Робоча — <workspace>" як підпапка під спільним коренем.)
   meta.json        метадані проєктів (за замовч. _source/projects-meta.json):
                    [{name, gizmo_id, instructions, files: [...]}, ...] —
                    зберігається з відповіді gizmos/snorlax/sidebar
@@ -26,7 +30,7 @@ import subprocess
 import sys
 
 if len(sys.argv) < 2:
-    sys.exit('Вкажи корінь гілки: python3 tools/reorg.py "1. Робоча — <workspace>"')
+    sys.exit('Вкажи корінь гілки (нова схема: "" з теки простору): python3 tools/reorg.py ""')
 WORK = sys.argv[1]
 META = sys.argv[2] if len(sys.argv) > 2 else "_source/projects-meta.json"
 ND_PREFIX = sys.argv[3] if len(sys.argv) > 3 else "proj-"
